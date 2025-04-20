@@ -6,10 +6,10 @@ This script runs simulations to compare different routing protocols in Wireless 
 """
 
 import argparse
+import sys
 from config.simulation_config import get_config
 from experiments.compare_protocols import compare_protocols
 from core.simulation import WSNSimulation
-from utils.visual_simulation import WSNVisualSimulation  # Import the new visualization
 
 def main():
     """Main entry point for WSN simulation"""
@@ -57,38 +57,36 @@ def main():
     protocols = None
     if 'all' not in args.protocols:
         protocols = args.protocols
+    else:
+        protocols = ['LEACH', 'DirectedDiffusion', 'GEAR', 'PEGASIS']
     
     if args.visual:
-        # Run visual simulation with a single protocol
-        protocol = args.protocols[0] if 'all' not in args.protocols else 'LEACH'
-        print(f"Starting visual simulation using {protocol} protocol...")
-        
-        config['protocol_type'] = protocol
-        simulation = WSNSimulation(config)
-        
-        # Fix for lifetime calculation
-        simulation.metrics['first_dead_time'] = 0  # Track when first node dies
-        
-        # Override collect_metrics method to track first dead node
-        original_collect_metrics = simulation.collect_metrics
-        
-        def enhanced_collect_metrics():
-            while True:
-                # Call the original method
-                yield from original_collect_metrics()
-                
-                # Check for first dead node
-                if simulation.metrics['first_dead_time'] == 0:
-                    alive = sum(1 for node in simulation.nodes if node.alive)
-                    if alive < len(simulation.nodes):
-                        simulation.metrics['first_dead_time'] = simulation.env.now
-                        print(f"First node died at time {simulation.env.now}")
-        
-        simulation.collect_metrics = enhanced_collect_metrics
-        
-        # Run the visual simulation
-        visual_sim = WSNVisualSimulation(simulation)
-        visual_sim.start(save_animation=args.save_animation)
+        # Load visualization module only when needed
+        try:
+            from utils.visual_simulation import WSNVisualSimulation
+        except ImportError:
+            print("Error: Could not import visualization module.")
+            print("Make sure utils/visual_simulation.py exists and contains the WSNVisualSimulation class.")
+            sys.exit(1)
+            
+        # Run visual simulation for each selected protocol
+        for protocol in protocols:
+            print(f"Starting visual simulation using {protocol} protocol...")
+            
+            # Configure simulation for this protocol
+            protocol_config = config.copy()
+            protocol_config['protocol_type'] = protocol
+            
+            # Create simulation instance
+            simulation = WSNSimulation(protocol_config)
+            
+            # Run the visual simulation
+            visual_sim = WSNVisualSimulation(simulation)
+            try:
+                visual_sim.start(save_animation=args.save_animation)
+            except Exception as e:
+                print(f"Error during visualization of {protocol}: {str(e)}")
+                print("Trying next protocol...")
     else:
         # Run normal comparison
         print(f"Starting simulation with {config['num_nodes']} nodes for {config['simulation_time']} time units")

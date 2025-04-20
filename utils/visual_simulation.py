@@ -26,6 +26,7 @@ class WSNVisualSimulation:
         
         # For tracking simulation progress
         self.last_time = 0
+        self.frame_count = 0
         
     def start(self, save_animation=False):
         """Start the visual simulation
@@ -98,9 +99,12 @@ class WSNVisualSimulation:
         Args:
             frame: Frame number
         """
-        # Progress the simulation if it's not already running
-        time_now = frame * 10  # Convert frame to simulation time
-        time_diff = time_now - self.last_time
+        # Fix: Keep track of frame count to ensure consistent time increments
+        self.frame_count += 1
+        time_now = self.frame_count * 10  # Convert frame to simulation time
+        
+        # Fix: Ensure time_diff is always positive
+        time_diff = max(0, time_now - self.last_time)
         
         # Record any transmissions that happen during this frame
         self.record_transmissions(time_diff)
@@ -128,29 +132,43 @@ class WSNVisualSimulation:
         Args:
             time_diff: Time difference since last update
         """
-        # In a real implementation, this would be linked to actual transmission events
-        # For now, we'll generate some random transmissions
-        if len(self.simulation.nodes) > 0:
-            for _ in range(np.random.poisson(time_diff * 0.2)):  # Random number of events
-                from_idx = np.random.randint(0, len(self.simulation.nodes))
-                from_node = self.simulation.nodes[from_idx]
-                
-                if np.random.random() < 0.3:  # 30% chance to transmit to base station
-                    to_node = self.simulation.base_station
-                else:
-                    to_idx = np.random.randint(0, len(self.simulation.nodes))
-                    to_node = self.simulation.nodes[to_idx]
-                
-                # Only add transmissions from alive nodes
-                if from_node.alive:
-                    self.transmission_events.append({
-                        'from': from_node,
-                        'to': to_node,
-                        'time': self.last_time,
-                        'duration': self.event_duration,
-                        'color': 'yellow' if isinstance(to_node, type(self.simulation.base_station)) 
-                                else 'cyan'
-                    })
+        # Fix: Ensure time_diff is valid for Poisson distribution
+        if time_diff <= 0 or len(self.simulation.nodes) == 0:
+            return
+            
+        # Generate random number of transmission events based on time passed
+        try:
+            num_events = np.random.poisson(max(0.1, time_diff * 0.2))
+        except ValueError:
+            # Fallback if Poisson fails
+            num_events = int(time_diff * 0.2) + 1
+        
+        # Generate random transmission events
+        for _ in range(num_events):
+            # Pick a random sender
+            from_idx = np.random.randint(0, len(self.simulation.nodes))
+            from_node = self.simulation.nodes[from_idx]
+            
+            # Decide if transmission goes to base station or another node
+            if np.random.random() < 0.3:  # 30% chance to transmit to base station
+                to_node = self.simulation.base_station
+            else:
+                # Pick a random receiver that's not the sender
+                valid_receivers = [i for i in range(len(self.simulation.nodes)) if i != from_idx]
+                if not valid_receivers:  # If there are no valid receivers
+                    continue
+                to_idx = np.random.choice(valid_receivers)
+                to_node = self.simulation.nodes[to_idx]
+            
+            # Only add transmissions from alive nodes
+            if from_node.alive:
+                self.transmission_events.append({
+                    'from': from_node,
+                    'to': to_node,
+                    'time': self.last_time,
+                    'duration': self.event_duration,
+                    'color': 'yellow' if hasattr(to_node, 'packets_received') else 'cyan'
+                })
     
     def update_nodes(self):
         """Update node positions and properties"""
@@ -183,14 +201,16 @@ class WSNVisualSimulation:
             elif node.is_cluster_head:
                 face_colors.append('green')
             else:
-                face_colors.append(plt.cm.viridis(node.energy))
+                # Apply a colormap to the energy value
+                energy_val = max(0, min(1, node.energy))  # Ensure energy is between 0 and 1
+                face_colors.append(plt.cm.viridis(energy_val))
         
         self.node_scatter.set_facecolor(face_colors)
         
     def update_transmissions(self):
         """Update transmission visualizations"""
         # Clear old transmission lines
-        for line in self.ax.lines:
+        for line in self.ax.lines[5:]:  # Keep the first 5 lines (legend items)
             line.remove()
         
         # Draw active transmission events
@@ -218,7 +238,7 @@ class WSNVisualSimulation:
         ch_count = sum(1 for node in self.simulation.nodes 
                       if node.alive and node.is_cluster_head)
         
-        avg_energy = sum(node.energy for node in self.simulation.nodes) / len(self.simulation.nodes)
+        avg_energy = sum(node.energy for node in self.simulation.nodes) / max(1, len(self.simulation.nodes))
         
         stats = (f"Time: {time_now:.1f}\n"
                 f"Alive Nodes: {alive_count}/{len(self.simulation.nodes)}\n"
