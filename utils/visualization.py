@@ -1,129 +1,168 @@
-import random
+import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
-import simpy
-from core.node import SensorNode
-from core.base_station import BaseStation
-from protocols.leach import LEACH
-from protocols.directed_diffusion import DirectedDiffusion
-from protocols.gear import GEAR
-from protocols.pegasis import PEGASIS
 
-class WSNSimulation:
-    """Main simulation environment for Wireless Sensor Networks"""
+class WSNVisualizer:
+    """Class for visualizing WSN simulation results"""
     
-    def __init__(self, config):
-        """Initialize the simulation environment
+    def __init__(self, figsize=(12, 8)):
+        """Initialize the visualizer
         
         Args:
-            config: A dictionary containing simulation parameters
+            figsize: Figure size for plots
         """
-        self.env = simpy.Environment()
-        self.width = config.get('width', 100)
-        self.height = config.get('height', 100)
-        self.num_nodes = config.get('num_nodes', 100)
-        self.base_station_pos = config.get('base_station_pos', (50, 50))
-        self.protocol_type = config.get('protocol_type', 'LEACH')
-        self.simulation_time = config.get('simulation_time', 1000)
-        self.packet_size = config.get('packet_size', 4000)
-        self.comm_range = config.get('comm_range', 30)
-        self.seed = config.get('seed', None)
+        self.figsize = figsize
+        self.colors = ['blue', 'green', 'red', 'orange', 'purple', 'brown', 'pink', 'gray']
         
-        # Set random seed if provided
-        if self.seed is not None:
-            random.seed(self.seed)
-            np.random.seed(self.seed)
+    def plot_network(self, simulation, save_path=None):
+        """Plot the network topology
         
-        # Create base station
-        self.base_station = BaseStation(self.base_station_pos)
+        Args:
+            simulation: WSNSimulation instance
+            save_path: Path to save the figure, or None for display
+        """
+        plt.figure(figsize=self.figsize)
         
-        # Create nodes
-        self.nodes = []
+        # Create a graph
+        G = nx.Graph()
         
-        # Metrics
-        self.metrics = {
-            'alive_nodes': [],
-            'energy_levels': [],
-            'packets_delivered': 0,
-            'network_lifetime': 0,
-            'total_energy_consumed': 0,
-            'time_points': []
-        }
-        
-        # Initialize nodes and protocol
-        self._create_nodes()
-        self._setup_protocol()
-        
-    def _create_nodes(self):
-        """Create sensor nodes with random positions"""
-        for i in range(self.num_nodes):
-            x = random.uniform(0, self.width)
-            y = random.uniform(0, self.height)
-            node = SensorNode(self.env, i, (x, y))
-            self.nodes.append(node)
+        # Add nodes
+        for node in simulation.nodes:
+            G.add_node(node.id, pos=node.position, alive=node.alive, 
+                      is_ch=node.is_cluster_head, energy=node.energy)
             
-        # Set up neighbors for each node (based on communication range)
-        for node in self.nodes:
-            for other in self.nodes:
-                if node != other and node.distance_to(other) <= self.comm_range:
-                    node.neighbors.append(other)
-    
-    def _setup_protocol(self):
-        """Initialize routing protocol based on type"""
-        if self.protocol_type == "LEACH":
-            self.protocol = LEACH(self)
-        elif self.protocol_type == "DirectedDiffusion":
-            self.protocol = DirectedDiffusion(self)
-        elif self.protocol_type == "GEAR":
-            self.protocol = GEAR(self)
-        elif self.protocol_type == "PEGASIS":
-            self.protocol = PEGASIS(self)
+            # Add edges for neighbors
+            for neighbor in node.neighbors:
+                if neighbor.id > node.id:  # Add each edge only once
+                    G.add_edge(node.id, neighbor.id)
+        
+        # Get node positions for drawing
+        pos = nx.get_node_attributes(G, 'pos')
+        
+        # Get node colors based on role and energy
+        colors = []
+        sizes = []
+        for node_id in G.nodes():
+            if node_id == simulation.base_station.id:
+                colors.append('red')
+                sizes.append(300)
+            elif G.nodes[node_id]['is_ch']:
+                colors.append('green')
+                sizes.append(200)
+            elif G.nodes[node_id]['alive']:
+                energy = G.nodes[node_id]['energy']
+                # Color gradient from yellow (low energy) to blue (high energy)
+                colors.append((1-energy, 1-energy, energy))
+                sizes.append(100)
+            else:
+                colors.append('gray')
+                sizes.append(50)
+        
+        # Draw the graph
+        nx.draw(G, pos, node_color=colors, node_size=sizes, 
+               with_labels=True, font_size=8, alpha=0.8)
+        
+        # Add base station
+        plt.plot(simulation.base_station.position[0], simulation.base_station.position[1], 
+                'rs', markersize=15, label='Base Station')
+        
+        # Add legend
+        plt.legend(loc='upper right')
+        
+        plt.title(f'Network Topology - {simulation.protocol.get_name()}')
+        plt.grid(True)
+        
+        if save_path:
+            plt.savefig(save_path)
         else:
-            raise ValueError(f"Unknown protocol type: {self.protocol_type}")
+            plt.show()
             
-        # Setup protocol
-        self.protocol.setup()
-    
-    def run(self):
-        """Run the simulation
+    def plot_alive_nodes(self, metrics_data, save_path=None):
+        """Plot alive nodes over time for multiple protocols
         
-        Returns:
-            dict: Collected metrics
+        Args:
+            metrics_data: Dict of protocol name -> (time_points, alive_nodes)
+            save_path: Path to save the figure, or None for display
         """
-        # Setup protocol process
-        self.env.process(self.protocol.run())
+        plt.figure(figsize=self.figsize)
         
-        # Setup data collection process
-        self.env.process(self.collect_metrics())
+        for i, (protocol, (time_points, alive_nodes)) in enumerate(metrics_data.items()):
+            plt.plot(time_points, alive_nodes, 
+                    color=self.colors[i % len(self.colors)], 
+                    marker='o', markersize=3, label=protocol)
         
-        # Run for specified time
-        self.env.run(until=self.simulation_time)
+        plt.title('Number of Alive Nodes over Time')
+        plt.xlabel('Simulation Time')
+        plt.ylabel('Number of Alive Nodes')
+        plt.grid(True)
+        plt.legend()
         
-        return self.metrics
-    
-    def collect_metrics(self):
-        """Collect simulation metrics periodically"""
-        while True:
-            # Record time point
-            self.metrics['time_points'].append(self.env.now)
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
             
-            # Count alive nodes
-            alive = sum(1 for node in self.nodes if node.alive)
-            self.metrics['alive_nodes'].append(alive)
+    def plot_energy_levels(self, metrics_data, save_path=None):
+        """Plot energy levels over time for multiple protocols
+        
+        Args:
+            metrics_data: Dict of protocol name -> (time_points, energy_levels)
+            save_path: Path to save the figure, or None for display
+        """
+        plt.figure(figsize=self.figsize)
+        
+        for i, (protocol, (time_points, energy_levels)) in enumerate(metrics_data.items()):
+            plt.plot(time_points, energy_levels, 
+                    color=self.colors[i % len(self.colors)], 
+                    marker='o', markersize=3, label=protocol)
+        
+        plt.title('Average Energy Level over Time')
+        plt.xlabel('Simulation Time')
+        plt.ylabel('Average Energy Level')
+        plt.grid(True)
+        plt.legend()
+        
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
             
-            # Average energy level
-            avg_energy = sum(node.energy for node in self.nodes) / self.num_nodes
-            self.metrics['energy_levels'].append(avg_energy)
-            
-            # Record packets delivered
-            self.metrics['packets_delivered'] = self.base_station.packets_received
-            
-            # If no nodes alive, record network lifetime
-            if alive == 0 and self.metrics['network_lifetime'] == 0:
-                self.metrics['network_lifetime'] = self.env.now
-            
-            # Calculate total energy consumed
-            initial_energy = self.num_nodes  # assuming each node starts with 1.0
-            current_energy = sum(node.energy for node in self.nodes)
-            self.metrics['total_energy_consumed'] = initial_energy - current_energy
-            
-            yield self.env.timeout(10)  # collect every 10 time units
+    def plot_comparison_bars(self, metrics_df, save_path=None):
+        """Plot bar charts comparing protocol performance metrics
+        
+        Args:
+            metrics_df: DataFrame with protocol metrics
+            save_path: Path to save the figure, or None for display
+        """
+        fig, axes = plt.subplots(2, 2, figsize=self.figsize)
+        
+        # Network Lifetime
+        metrics_df.plot(x='Protocol', y='Network Lifetime', kind='bar', 
+                       ax=axes[0, 0], color='blue', legend=False)
+        axes[0, 0].set_title('Network Lifetime')
+        axes[0, 0].set_ylabel('Time Units')
+        
+        # Packets Delivered
+        metrics_df.plot(x='Protocol', y='Packets Delivered', kind='bar', 
+                       ax=axes[0, 1], color='green', legend=False)
+        axes[0, 1].set_title('Packets Delivered')
+        axes[0, 1].set_ylabel('Packets')
+        
+        # Energy Efficiency
+        metrics_df.plot(x='Protocol', y='Energy Efficiency', kind='bar', 
+                       ax=axes[1, 0], color='orange', legend=False)
+        axes[1, 0].set_title('Energy Efficiency')
+        axes[1, 0].set_ylabel('Packets/Energy Unit')
+        
+        # Total Energy Consumed
+        metrics_df.plot(x='Protocol', y='Total Energy Consumed', kind='bar', 
+                       ax=axes[1, 1], color='red', legend=False)
+        axes[1, 1].set_title('Total Energy Consumed')
+        axes[1, 1].set_ylabel('Energy Units')
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path)
+        else:
+            plt.show()
