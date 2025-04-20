@@ -100,8 +100,16 @@ class WSNSimulation:
         
         return self.metrics
     
+    # This is just the modified collect_metrics method to add more meaningful lifetime metrics
+
     def collect_metrics(self):
         """Collect simulation metrics periodically"""
+        # Initialize tracking variables if they don't exist
+        if 'first_dead_time' not in self.metrics:
+            self.metrics['first_dead_time'] = 0
+        if 'half_dead_time' not in self.metrics:
+            self.metrics['half_dead_time'] = 0
+        
         while True:
             # Record time point
             self.metrics['time_points'].append(self.env.now)
@@ -110,16 +118,24 @@ class WSNSimulation:
             alive = sum(1 for node in self.nodes if node.alive)
             self.metrics['alive_nodes'].append(alive)
             
+            # Record first dead node time
+            if self.metrics['first_dead_time'] == 0 and alive < self.num_nodes:
+                self.metrics['first_dead_time'] = self.env.now
+                
+            # Record half dead time
+            if self.metrics['half_dead_time'] == 0 and alive <= self.num_nodes / 2:
+                self.metrics['half_dead_time'] = self.env.now
+            
+            # Record network lifetime (when all nodes are dead)
+            if alive == 0 and self.metrics['network_lifetime'] == 0:
+                self.metrics['network_lifetime'] = self.env.now
+            
             # Average energy level
             avg_energy = sum(node.energy for node in self.nodes) / self.num_nodes
             self.metrics['energy_levels'].append(avg_energy)
             
             # Record packets delivered
             self.metrics['packets_delivered'] = self.base_station.packets_received
-            
-            # If no nodes alive, record network lifetime
-            if alive == 0 and self.metrics['network_lifetime'] == 0:
-                self.metrics['network_lifetime'] = self.env.now
             
             # Calculate total energy consumed
             initial_energy = self.num_nodes  # assuming each node starts with 1.0
