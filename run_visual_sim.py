@@ -31,6 +31,9 @@ def main():
     parser.add_argument('--save', action='store_true',
                         help='Save animation to file')
     
+    parser.add_argument('--speed', type=float, default=1.0,
+                        help='Simulation speed multiplier')
+    
     args = parser.parse_args()
     
     # Configure simulation
@@ -45,12 +48,31 @@ def main():
     }
     
     print(f"Starting visual simulation of {args.protocol} with {args.nodes} nodes...")
+    print("This visualization shows:")
+    print("  - Node states (cluster heads, regular nodes, dead nodes)")
+    print("  - Data transmissions between nodes")
+    print("  - Protocol-specific behaviors:")
+    
+    if args.protocol == 'LEACH':
+        print("    * Cluster formation with boundaries")
+        print("    * Cluster head rotation")
+        print("    * Data collection and aggregation")
+    elif args.protocol == 'PEGASIS':
+        print("    * Chain formation for efficient routing")
+        print("    * Leader selection for transmitting to base station")
+    elif args.protocol == 'DirectedDiffusion':
+        print("    * Interest propagation from sink")
+        print("    * Gradient establishment")
+        print("    * Data delivery along reinforced paths")
+    elif args.protocol == 'GEAR':
+        print("    * Geographic target regions")
+        print("    * Energy-aware geographic routing")
     
     # Create and run simulation
     simulation = WSNSimulation(config)
     
     # Start visualization
-    visualizer = SimpleWSNVisualizer(simulation)
+    visualizer = SimpleWSNVisualizer(simulation, interval=int(100/args.speed))
     visualizer.start(save_animation=args.save)
     
     print("Simulation complete.")
