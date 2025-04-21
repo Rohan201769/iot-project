@@ -107,12 +107,12 @@ if st.button(f"Run {protocol} Simulation"):
         half_dead = next((i for i, a in enumerate(alive) if a <= config['NUM_NODES']/2), len(alive))
         network_lifetime = len(alive)
         
-        metrics_df = {
-            "Metric": ["First Node Death (round)", "Half Network Death (round)", 
-                      "Network Lifetime (rounds)", "Final Energy Level"],
-            "Value": [first_dead, half_dead, network_lifetime, 
-                     f"{energy[-1]:.4f} ({energy[-1]/config['NUM_NODES']:.4f} per node)"]
-        }
+        energy_per_node = energy[-1]/config['NUM_NODES'] if len(energy) > 0 else 0
+        metrics_df = pd.concat([metrics_df, pd.DataFrame({
+            "Metric": ["Final Energy Level (per node)"],
+            "Value": [energy_per_node]
+        })])
+
         
         st.table(metrics_df)
 

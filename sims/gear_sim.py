@@ -46,8 +46,19 @@ def simulate_gear(config=None):
 
         # Select nodes within communication range of sink
         dist_to_sink = distance(nodes['x'], nodes['y'], *config['SINK_POS'])
-        in_range = np.where((dist_to_sink < config['COMM_RANGE']) & nodes['alive'])[0]
+        in_range = np.where((dist_to_sink < config['COMM_RANGE'] * 3) & nodes['alive'])[0]
 
+        if len(in_range) == 0:
+            # Find closest 5 alive nodes
+            alive_indices = np.where(nodes['alive'])[0]
+            if len(alive_indices) > 0:
+                distances = dist_to_sink[alive_indices]
+                closest_indices = np.argsort(distances)[:min(5, len(alive_indices))]
+                in_range = alive_indices[closest_indices]
+
+        # Add this after the in_range calculation:
+        st.sidebar.write(f"Round {r+1}: {len(in_range)} nodes in range")
+        
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.set_xlim(0, config['FIELD_X'])
         ax.set_ylim(0, config['FIELD_Y'] + 60)
