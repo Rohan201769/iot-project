@@ -4,8 +4,8 @@ class EnergyModel:
     
     def __init__(self):
         # Energy consumption parameters in Joules
-        self.e_elec = 50e-9      # Energy for electronics (J/bit)
-        self.e_amp = 100e-12     # Energy for amplifier (J/bit/m^2)
+        self.e_elec = 50e-8      # Energy for electronics (J/bit)
+        self.e_amp = 100e-11     # Energy for amplifier (J/bit/m^2)
         self.e_da = 5e-9         # Energy for data aggregation (J/bit)
         self.e_sense = 5e-9      # Energy for sensing (J/bit)
         

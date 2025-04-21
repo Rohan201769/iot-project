@@ -91,6 +91,7 @@ python main.py --protocols LEACH PEGASIS
 python main.py --config small
 python main.py --config large
 python main.py --config high_traffic
+python3 run_visual_sim.py --protocol LEACH --time 1000 --nodes 50  
 ```
 
 ### Run Specific Experiments
